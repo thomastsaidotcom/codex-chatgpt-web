@@ -4295,6 +4295,18 @@ export class ChatGptBrowserWorker {
   private async smokeTestExclusive(abortSignal?: AbortSignal): Promise<{ effort: string; response: string }> {
     const page = await this.ensurePage();
     await this.prepareChatSurface(page, undefined, false, abortSignal);
+    const composer = await this.activeComposer(page);
+    const control = composer.locator("xpath=ancestor::form[1]")
+      .locator(CHATGPT_EFFORT_CONTROL_SELECTOR).filter({ visible: true });
+    if (await control.isVisible()) {
+      try {
+        // Fresh chats default to GPT-6, whose advanced picker may expose no effort slider.
+        const activation = await activateChatGptEffortMenu(page, control);
+        await selectChatGptModelFamily(activation, "5.6", () => activateChatGptEffortMenu(page, control));
+      } finally {
+        await page.keyboard.press("Escape").catch(() => {});
+      }
+    }
     const account = await detectChatGptAccountCapabilities(page);
     // Core smoke runs before the optional MCP connector is configured, so it must remain a
     // browser-only transport check. Connector setup has its own explicit verification operation.
@@ -4306,6 +4318,7 @@ export class ChatGptBrowserWorker {
     const response = await this.runBrowserTurn({
       traceId,
       modelId,
+      modelFamily: account.solAvailable ? "5.6" : undefined,
       reasoning,
       capabilities,
       prepare: async () => ({ text: CHATGPT_SMOKE_TEXT, images: [], release: () => {} }),
